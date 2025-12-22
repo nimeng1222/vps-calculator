@@ -97,5 +97,3 @@ docker-compose up -d
 *Made with ❤️ for the VPS community.*
 
 ```
-
-```
