@@ -20,7 +20,7 @@
 version: '3.8'
 services:
   vps-calc:
-    image: <你的DockerHub用户名>/vps-calc:latest
+    image: nimeng1222/vps-calc:latest
     container_name: vps_calculator
     restart: always
     ports:
