@@ -1,4 +1,3 @@
-```markdown
 # 📊 VPS 交易价值计算器 (VPS Value Calculator)
 
 [![Docker Pulls](https://img.shields.io/docker/pulls/nimeng1222/vps-calculator)](https://hub.docker.com/r/nimeng1222/vps-calculator)
