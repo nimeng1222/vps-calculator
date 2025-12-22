@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VPS 交易计算器 Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        
+        .btn-press { transition: transform 0.1s ease; }
+        .btn-press:active { transform: scale(0.96); }
+
+        .mode-card {
+            transition: all 0.2s ease;
+            border: 2px solid transparent;
+        }
+        .mode-card.active {
+            border-color: #1e293b; background-color: #fff;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08); z-index: 10;
+        }
+        .mode-card.inactive {
+            opacity: 0.8; background-color: #f1f5f9; border-color: #cbd5e1;
+        }
+        .mode-card.inactive:hover { opacity: 1; border-color: #94a3b8; }
+
+        .dropdown-enter-active, .dropdown-leave-active { transition: all 0.2s ease; }
+        .dropdown-enter-from, .dropdown-leave-to { opacity: 0; transform: translateY(-10px); }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        .animate-shimmer { animation: shimmer 2s infinite linear; }
+
+        .toast-enter-active, .toast-leave-active { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(-20px); }
+    </style>
+</head>
+<body class="text-slate-600" @click="closeDropdown">
+    <div id="app" class="min-h-screen p-4 lg:p-10 flex justify-center items-start">
+        
+        <transition name="toast">
+            <div v-if="toast.show" class="fixed top-8 left-1/2 transform -translate-x-1/2 z-[100] flex items-center gap-3 bg-slate-900 text-white px-6 py-3.5 rounded-full shadow-2xl pointer-events-none">
+                <svg v-if="toast.type === 'success'" class="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                <svg v-else class="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                <span class="text-sm font-medium tracking-wide">{{ toast.message }}</span>
+            </div>
+        </transition>
+
+        <div class="max-w-7xl w-full grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <div class="lg:col-span-4 space-y-6">
+                <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 relative z-20">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="font-bold text-slate-800 text-xl flex items-center gap-2">
+                            <span class="w-1.5 h-6 bg-indigo-600 rounded-full"></span>
+                            配置参数
+                        </h2>
+                        <button @click="reset" class="btn-press text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200">重置</button>
+                    </div>
+
+                    <div class="space-y-5">
+                        
+                        <div class="space-y-1.5 relative z-50">
+                            <label class="text-xs font-bold text-slate-400 uppercase ml-1">购买价格</label>
+                            <div class="flex gap-2">
+                                <div class="relative flex-1">
+                                    <input v-model.number="originalPrice" type="number" 
+                                           class="w-full h-12 pl-4 pr-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder-slate-300" 
+                                           placeholder="0.00">
+                                </div>
+                                
+                                <div class="relative w-36" @click.stop="toggleDropdown">
+                                    <div class="h-12 w-full bg-white border border-slate-200 rounded-xl flex items-center justify-between px-3 cursor-pointer hover:border-indigo-400 transition-colors select-none shadow-sm"
+                                         :class="{'ring-2 ring-indigo-500/20 border-indigo-500': dropdownOpen}">
+                                        <span class="font-bold text-slate-700 flex items-center gap-2 text-sm truncate">
+                                            <span>{{ selectedCurrencyObj.symbol }}</span>
+                                            <span>{{ selectedCurrencyObj.name }}</span>
+                                        </span>
+                                        <svg class="w-4 h-4 text-slate-400 transition-transform flex-shrink-0" :class="{'rotate-180': dropdownOpen}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                                    </div>
+
+                                    <transition name="dropdown">
+                                        <div v-if="dropdownOpen" class="absolute right-0 top-14 w-48 bg-white border border-slate-100 rounded-xl shadow-xl py-1 z-[60] overflow-hidden">
+                                            <div v-for="c in currencyList" :key="c.code" 
+                                                 @click.stop="selectCurrency(c)"
+                                                 class="px-4 py-2.5 flex items-center justify-between hover:bg-slate-50 cursor-pointer group transition-colors">
+                                                <div class="flex items-center gap-3 w-full">
+                                                    <span class="font-bold text-slate-700 w-9 text-center flex-shrink-0">{{ c.symbol }}</span>
+                                                    <div class="flex flex-col flex-1 min-w-0">
+                                                        <span class="text-sm font-bold text-slate-700 leading-none truncate">{{ c.name }}</span>
+                                                        <span class="text-[10px] text-slate-400 leading-none mt-1">{{ c.code }}</span>
+                                                    </div>
+                                                </div>
+                                                <svg v-if="currency === c.code" class="w-4 h-4 text-indigo-600 flex-shrink-0 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                                            </div>
+                                        </div>
+                                    </transition>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="relative group z-40">
+                            <div class="absolute inset-0 bg-indigo-50 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                            <div class="relative flex items-center justify-between p-3 border border-slate-200 rounded-xl bg-white group-hover:border-indigo-200 transition-colors">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                                    </div>
+                                    <div class="flex flex-col">
+                                        <label class="text-[10px] font-bold text-slate-400 uppercase">当前汇率 (CNY)</label>
+                                        <div class="flex items-baseline gap-1">
+                                            <span class="text-xs font-bold text-slate-500">1 {{ currency }} ≈</span>
+                                            <input v-model.number="exchangeRate" type="number" step="0.0001" 
+                                                   class="w-20 p-0 border-none bg-transparent font-bold text-slate-800 focus:ring-0 text-sm h-auto" 
+                                                   placeholder="0.00">
+                                        </div>
+                                    </div>
+                                </div>
+                                <button @click="fetchRate(true)" class="btn-press p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600 transition-colors" title="刷新汇率">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4 relative z-30">
+                            <div>
+                                <label class="text-xs font-bold text-slate-400 uppercase mb-1.5 block ml-1">到期日期</label>
+                                <input v-model="expiryDateInput" type="date" class="w-full p-3 bg-white border border-slate-200 rounded-xl font-medium text-slate-700 outline-none text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all cursor-pointer">
+                            </div>
+                            <div>
+                                <label class="text-xs font-bold text-slate-400 uppercase mb-1.5 block ml-1">续费周期</label>
+                                <div class="relative">
+                                    <select v-model.number="cycle" class="w-full p-3 bg-white border border-slate-200 rounded-xl font-medium text-slate-700 outline-none text-sm appearance-none cursor-pointer hover:border-slate-300">
+                                        <option :value="30">月付 (30天)</option>
+                                        <option :value="90">季付 (90天)</option>
+                                        <option :value="365">年付 (365天)</option>
+                                        <option :value="730">两年 (730天)</option>
+                                    </select>
+                                    <div class="absolute right-3 top-3.5 pointer-events-none text-slate-400">
+                                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="h-px bg-slate-100 my-4 relative z-20"></div>
+
+                        <div class="relative z-10">
+                            <label class="text-xs font-bold text-slate-800 mb-3 block ml-1">快捷填充</label>
+                            <div class="flex gap-4">
+                                <div @click="applyExact" 
+                                     class="mode-card flex-1 p-4 rounded-xl cursor-pointer flex flex-col items-center justify-center gap-1"
+                                     :class="fillMode === 'exact' ? 'active' : 'inactive'">
+                                    <svg class="w-6 h-6 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    <span class="font-bold text-sm text-slate-700">精确价格</span>
+                                </div>
+                                <div @click="switchDiscountMode" 
+                                     class="mode-card flex-1 p-4 rounded-xl cursor-pointer flex flex-col items-center justify-center gap-1"
+                                     :class="fillMode === 'discount' ? 'active' : 'inactive'">
+                                    <svg class="w-6 h-6 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" /></svg>
+                                    <span class="font-bold text-sm text-slate-700">折扣计算</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-if="fillMode === 'discount'" class="bg-slate-50 rounded-xl p-4 border border-slate-100 animate-[fadeIn_0.2s_ease-out] relative z-10">
+                            <div class="flex justify-between text-xs font-bold text-slate-500 mb-3">
+                                <span>折扣比例</span>
+                                <span class="text-indigo-600 bg-indigo-50 px-2 rounded">{{ discountInput }}折</span>
+                            </div>
+                            <div class="grid grid-cols-4 gap-2">
+                                <div v-for="d in [95,90,85,80,75,70,60,50]" :key="d" 
+                                     @click="applyDiscount(d)"
+                                     class="py-2 rounded-lg text-center text-xs font-bold border cursor-pointer select-none transition-all active:scale-95"
+                                     :class="discountInput === d ? 'bg-slate-800 text-white border-slate-800 shadow-md' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-400 hover:text-slate-800'">
+                                    {{ d }}折
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-slate-900 rounded-xl p-5 text-white shadow-lg relative overflow-hidden group z-10">
+                            <div class="absolute top-0 right-0 w-24 h-24 bg-white opacity-5 rounded-full -mr-10 -mt-10 blur-xl"></div>
+                            <div class="relative z-10">
+                                <label class="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                                    <span>最终交易价格 (CNY)</span>
+                                    <span class="text-emerald-400 text-[10px] bg-white/10 px-1.5 py-0.5 rounded cursor-help">可手动修改</span>
+                                </label>
+                                <div class="flex items-baseline gap-1 border-b border-white/20 pb-1">
+                                    <span class="text-2xl font-bold text-indigo-400">¥</span>
+                                    <input v-model.number="transactionPrice" 
+                                           @input="handleManualInput"
+                                           type="number" 
+                                           class="bg-transparent text-4xl font-black text-white w-full outline-none placeholder-slate-600 focus:placeholder-slate-500 transition-colors" 
+                                           placeholder="0.00">
+                                </div>
+                                <div class="mt-3 flex justify-between items-center">
+                                    <span class="text-xs text-slate-400 flex items-center gap-1">
+                                        模式: <span class="text-white font-bold">{{ inputStateText }}</span>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-8 space-y-6">
+                
+                <div class="flex justify-end gap-3">
+                    <button @click="copyMarkdown" 
+                            class="btn-press bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-lg text-xs font-bold hover:border-indigo-300 hover:text-indigo-600 shadow-sm flex items-center gap-2 transition-colors">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+                        复制 Markdown
+                    </button>
+                    <button @click="downloadImage" class="btn-press bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-lg text-xs font-bold hover:border-indigo-300 hover:text-indigo-600 shadow-sm flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        保存图片
+                    </button>
+                </div>
+
+                <div id="result-dashboard" class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 space-y-8 relative z-10">
+                    
+                    <div class="flex items-center gap-3 border-b border-slate-100 pb-4">
+                        <div class="p-2 bg-indigo-50 rounded-lg">
+                            <svg class="w-6 h-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                        </div>
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-800">交易价值分析</h2>
+                            <p class="text-xs text-slate-400">基于 {{ expiryDateInput }} 到期计算</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="bg-slate-50/50 rounded-2xl p-6 text-center border border-slate-100 relative overflow-hidden">
+                            <h3 class="text-slate-400 font-bold text-[10px] uppercase tracking-wider mb-2">理论剩余价值</h3>
+                            <div class="text-3xl font-black text-slate-800 mb-1">¥{{ residualValueCNY.toFixed(2) }}</div>
+                            <div class="text-xs text-slate-400">原价剩 {{ remainingPercentage.toFixed(1) }}%</div>
+                            <div class="absolute top-0 left-0 w-full h-1 bg-slate-200"></div>
+                        </div>
+
+                        <div class="bg-indigo-50/30 rounded-2xl p-6 text-center border border-indigo-100 relative overflow-hidden">
+                            <h3 class="text-indigo-400 font-bold text-[10px] uppercase tracking-wider mb-2">二手交易价格</h3>
+                            <div class="text-3xl font-black text-indigo-700 mb-1">¥{{ (transactionPrice || 0).toFixed(2) }}</div>
+                            <div class="text-xs text-indigo-400">{{ inputStateText }}</div>
+                            <div class="absolute top-0 left-0 w-full h-1 bg-indigo-500"></div>
+                        </div>
+
+                        <div class="rounded-2xl p-6 text-center border relative overflow-hidden transition-colors"
+                             :class="profit >= 0 ? 'bg-amber-50/50 border-amber-100' : 'bg-emerald-50/50 border-emerald-100'">
+                            <h3 class="font-bold text-[10px] uppercase tracking-wider mb-2" 
+                                :class="profit >= 0 ? 'text-amber-400' : 'text-emerald-400'">
+                                {{ profit >= 0 ? '溢价金额 (Premium)' : '折价金额 (Discount)' }}
+                            </h3>
+                            <div class="text-3xl font-black mb-1" 
+                                 :class="profit >= 0 ? 'text-amber-600' : 'text-emerald-600'">
+                                {{ profit > 0 ? '+' : '' }}¥{{ profit.toFixed(2) }}
+                            </div>
+                            <div class="text-xs font-bold" :class="profit >= 0 ? 'text-amber-500' : 'text-emerald-500'">
+                                {{ profit >= 0 ? '卖家多赚' : '买家少付' }}
+                            </div>
+                            <div class="absolute top-0 left-0 w-full h-1" :class="profit >= 0 ? 'bg-amber-500' : 'bg-emerald-500'"></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-50 rounded-2xl p-6 border border-slate-100">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-y-6 gap-x-4 mb-6">
+                            <div>
+                                <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">续费原价</div>
+                                <div class="font-bold text-slate-700">{{ selectedCurrencyObj.symbol }} {{ originalPrice || '-' }}</div>
+                            </div>
+                            <div>
+                                <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">反推购买日期</div>
+                                <div class="font-bold text-slate-700">{{ calculatedPurchaseDate }}</div>
+                            </div>
+                            <div>
+                                <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">剩余天数</div>
+                                <div class="font-bold text-indigo-600">{{ remainingDays }} 天</div>
+                            </div>
+                            <div>
+                                <div class="text-[10px] font-bold text-slate-400 uppercase mb-1">日均成本</div>
+                                <div class="font-bold text-slate-700">¥{{ dailyCost.toFixed(2) }}</div>
+                            </div>
+                        </div>
+
+                        <div class="relative pt-2">
+                            <div class="flex justify-between text-[10px] font-bold text-slate-400 mb-2">
+                                <span>{{ calculatedPurchaseDate }}</span>
+                                <span>{{ (100 - remainingPercentage).toFixed(1) }}% 已用</span>
+                                <span>{{ expiryDateInput }}</span>
+                            </div>
+                            <div class="h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                                <div class="h-full bg-slate-800 rounded-full relative overflow-hidden shadow-sm" 
+                                     :style="{ width: remainingPercentage + '%' }">
+                                     <div class="absolute inset-0 bg-white/20 w-full h-full animate-shimmer"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, watch, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const originalPrice = ref(null);
+                const transactionPrice = ref(null);
+                const currency = ref('USD');
+                const exchangeRate = ref(7.15);
+                const cycle = ref(365);
+                const defaultExpiry = new Date();
+                defaultExpiry.setFullYear(defaultExpiry.getFullYear() + 1);
+                const expiryDateInput = ref(defaultExpiry.toISOString().split('T')[0]);
+                const fillMode = ref('manual'); 
+                const discountInput = ref(90);
+                const toast = ref({ show: false, message: '', type: 'success' });
+                
+                const dropdownOpen = ref(false);
+                const currencyList = [
+                    { code: 'USD', symbol: '$', name: '美元' },
+                    { code: 'EUR', symbol: '€', name: '欧元' },
+                    { code: 'JPY', symbol: '¥', name: '日元' },
+                    { code: 'GBP', symbol: '£', name: '英镑' },
+                    { code: 'CNY', symbol: '¥', name: '人民币' },
+                    { code: 'HKD', symbol: 'HK$', name: '港币' },
+                    { code: 'TWD', symbol: 'NT$', name: '台币' },
+                ];
+
+                const selectedCurrencyObj = computed(() => {
+                    return currencyList.find(c => c.code === currency.value) || currencyList[0];
+                });
+
+                const toggleDropdown = () => dropdownOpen.value = !dropdownOpen.value;
+                const closeDropdown = () => dropdownOpen.value = false;
+                const selectCurrency = (c) => {
+                    currency.value = c.code;
+                    dropdownOpen.value = false;
+                    fetchRate(true);
+                };
+
+                const totalCNY = computed(() => (originalPrice.value || 0) * (exchangeRate.value || 0));
+                const dailyCost = computed(() => cycle.value > 0 ? totalCNY.value / cycle.value : 0);
+
+                const timeData = computed(() => {
+                    if (!expiryDateInput.value) return { remaining: 0, pct: 0, startStr: '-' };
+                    const end = new Date(expiryDateInput.value);
+                    const now = new Date();
+                    const remainingMs = end - now;
+                    if (remainingMs <= 0) return { remaining: 0, pct: 0, startStr: '已过期' };
+                    const start = new Date(end);
+                    start.setDate(end.getDate() - parseInt(cycle.value));
+                    const totalMs = end - start;
+                    const pct = (remainingMs / totalMs) * 100;
+                    return {
+                        remaining: Math.ceil(remainingMs / (1000 * 60 * 60 * 24)),
+                        pct: Math.max(0, Math.min(100, pct)),
+                        startStr: start.toISOString().split('T')[0]
+                    };
+                });
+
+                const remainingDays = computed(() => timeData.value.remaining);
+                const remainingPercentage = computed(() => timeData.value.pct);
+                const calculatedPurchaseDate = computed(() => timeData.value.startStr);
+                const residualValueCNY = computed(() => totalCNY.value * (remainingPercentage.value / 100));
+                const profit = computed(() => (transactionPrice.value || 0) - residualValueCNY.value);
+
+                const inputStateText = computed(() => {
+                    if (fillMode.value === 'exact') return '精确价格';
+                    if (fillMode.value === 'discount') return `按 ${discountInput.value}% 折扣`;
+                    if (transactionPrice.value === null) return '等待输入';
+                    return '自定义价格';
+                });
+
+                const showToast = (msg, type='success') => {
+                    toast.value = { show: true, message: msg, type };
+                    setTimeout(() => toast.value.show = false, 2500);
+                };
+
+                const fetchRate = async (force=false) => {
+                    if (currency.value === 'CNY') { exchangeRate.value = 1; return; }
+                    try {
+                        const r = await fetch(`/api/rate/${currency.value}`);
+                        const d = await r.json();
+                        if (d.status === 'success') {
+                            exchangeRate.value = parseFloat(d.rate.toFixed(4));
+                            if(force) showToast(`汇率已刷新: ${exchangeRate.value}`);
+                        }
+                    } catch {}
+                };
+
+                const checkOriginalPrice = () => {
+                    if (!originalPrice.value) {
+                        showToast('请先输入续费原价', 'warning');
+                        return false;
+                    }
+                    return true;
+                };
+
+                const applyExact = () => {
+                    if (!checkOriginalPrice()) return;
+                    fillMode.value = 'exact';
+                    transactionPrice.value = parseFloat(residualValueCNY.value.toFixed(2));
+                };
+
+                const switchDiscountMode = () => {
+                    if (!checkOriginalPrice()) return;
+                    fillMode.value = 'discount';
+                    applyDiscount(discountInput.value);
+                };
+
+                const applyDiscount = (d) => {
+                    if (!checkOriginalPrice()) return;
+                    fillMode.value = 'discount';
+                    discountInput.value = d;
+                    transactionPrice.value = parseFloat((residualValueCNY.value * (d / 100)).toFixed(2));
+                };
+
+                const handleManualInput = () => {
+                    fillMode.value = 'manual';
+                };
+
+                const reset = () => {
+                    originalPrice.value = null;
+                    transactionPrice.value = null;
+                    fillMode.value = 'manual';
+                    showToast('已重置');
+                };
+
+                watch(residualValueCNY, () => {
+                    if (originalPrice.value) {
+                        if (fillMode.value === 'exact') transactionPrice.value = parseFloat(residualValueCNY.value.toFixed(2));
+                        if (fillMode.value === 'discount') applyDiscount(discountInput.value);
+                    }
+                });
+
+                // 兼容性复制方案
+                const copyMarkdown = () => {
+                    if(!originalPrice.value) { showToast('请先完善数据', 'warning'); return; }
+                    
+                    const isProfit = profit.value >= 0;
+                    const roi = transactionPrice.value > 0 ? ((profit.value / residualValueCNY.value) * 100).toFixed(2) : 0;
+                    
+                    const text = `# 📊 VPS 剩余价值计算结果\n\n` +
+                        `| **分类** | **项目** | **数值** | **说明** |\n` +
+                        `|---|---|---|---|\n` +
+                        `| **💰 价格信息** | 原购买价格 | ${selectedCurrencyObj.value.symbol}${originalPrice.value} | 约 ¥${totalCNY.value.toFixed(2)} |\n` +
+                        `| | 期望售价 | **¥${(transactionPrice.value || 0).toFixed(2)}** | 人民币计价 |\n` +
+                        `| | 剩余价值 | ¥${residualValueCNY.value.toFixed(2)} | 当前估值 |\n` +
+                        `| | ${isProfit ? '📈 溢价金额' : '📉 优惠金额'} | **${isProfit ? '+' : ''}¥${profit.value.toFixed(2)}** | ${isProfit ? '卖家收益' : '买家立省'} |\n` +
+                        `| | 溢价率/折扣率 | ${isProfit ? '+' : ''}${roi}% | 基于残值 |\n` +
+                        `| **📅 时间信息** | 购买日期 | ${calculatedPurchaseDate.value} | (反推) |\n` +
+                        `| | 续费周期 | ${cycle.value} 天 | 服务期限 |\n` +
+                        `| | 到期日期 | ${expiryDateInput.value} | 截止时间 |\n` +
+                        `| | 剩余时间 | **${remainingDays.value} 天** | 可用时间 |\n` +
+                        `| | 剩余进度 | ${(remainingPercentage.value).toFixed(2)}% | 价值占比 |\n\n` +
+                        `## 📊 分析结论\n\n` +
+                        `**${isProfit ? '⚠️ 溢价交易' : '✅ 好价推荐'}**\n\n` +
+                        `${isProfit ? '❌' : '🎉'} 按期望售价 **¥${(transactionPrice.value||0).toFixed(2)}** 出售，` +
+                        `相比理论剩余价值 ${isProfit ? '溢价' : '优惠'}了 **¥${Math.abs(profit.value).toFixed(2)}**。\n\n` +
+                        `**日均成本：** ¥${dailyCost.value.toFixed(2)}/天\n` +
+                        `---\n` +
+                        `📋 *报告生成时间：${new Date().toLocaleString()}*\n` +
+                        `🔗 *数据来源：VPS 剩余价值计算器*`;
+
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(text).then(() => {
+                            showToast('Markdown 已复制成功！');
+                        }).catch(() => fallbackCopy(text));
+                    } else {
+                        fallbackCopy(text);
+                    }
+                };
+
+                const fallbackCopy = (text) => {
+                    const textArea = document.createElement("textarea");
+                    textArea.value = text;
+                    textArea.style.position = "fixed"; 
+                    textArea.style.left = "-9999px";
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    try {
+                        const successful = document.execCommand('copy');
+                        if (successful) showToast('Markdown 已复制成功！');
+                        else showToast('复制失败', 'warning');
+                    } catch (err) {
+                        showToast('复制功能不可用', 'warning');
+                    }
+                    document.body.removeChild(textArea);
+                };
+
+                const downloadImage = () => {
+                    if(!originalPrice.value) { showToast('请先完善数据', 'warning'); return; }
+                    showToast('正在生成图片...', 'info');
+                    html2canvas(document.getElementById("result-dashboard"), { scale: 2 }).then(canvas => {
+                        const link = document.createElement('a');
+                        link.download = `vps-deal-${Date.now()}.png`;
+                        link.href = canvas.toDataURL();
+                        link.click();
+                        showToast('图片下载已开始');
+                    });
+                };
+
+                onMounted(() => {
+                    fetchRate();
+                });
+
+                return {
+                    originalPrice, currency, exchangeRate, expiryDateInput, cycle,
+                    transactionPrice, fillMode, discountInput, toast,
+                    calculatedPurchaseDate, remainingDays, remainingPercentage, dailyCost, residualValueCNY, profit, inputStateText,
+                    dropdownOpen, currencyList, selectedCurrencyObj,
+                    toggleDropdown, closeDropdown, selectCurrency,
+                    fetchRate, applyExact, switchDiscountMode, applyDiscount, handleManualInput, reset, copyMarkdown, downloadImage
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
