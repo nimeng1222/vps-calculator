@@ -14,6 +14,16 @@
 
 ## 🚀 快速部署 (Docker Compose)
 
+Docker Run
+
+docker run -d \
+  --name vps_calculator \
+  --restart always \
+  -p 5000:5000 \
+  -e FLASK_ENV=production \
+  nimeng1222/vps-calculator:latest
+
+
 只需创建一个 `docker-compose.yml` 文件：
 
 ```yaml
