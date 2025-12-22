@@ -7,7 +7,7 @@
 一个极简、现代化且高颜值的 VPS 剩余价值计算器，专为主机交易（MJJ）圈子设计。
 基于 **Python Flask** + **Vue.js** + **Tailwind CSS** 构建，支持 Docker 一键秒级部署。
 
-![应用截图](screenshot.png)
+![应用截图](ScreenShot_2025-12-22_114851_131.png)
 
 
 ## ✨ 核心特性
