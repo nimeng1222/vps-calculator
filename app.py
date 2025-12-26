@@ -1,29 +1,52 @@
-from flask import Flask, jsonify
-import requests, time
+from flask import Flask, jsonify, send_from_directory
+import requests
+import os
 
-app = Flask(__name__, static_url_path='', static_folder='static')
+app = Flask(__name__, static_folder='static')
 
-rate_cache = {"ts": 0, "rates": {}}
-TTL = 3600
+EXCHANGE_API_URL = "https://api.exchangerate-api.com/v4/latest/CNY"
+BACKUP_API_URL = "https://open.er-api.com/v6/latest/CNY"
+
+rate_cache = {}
 
 @app.route('/')
 def index():
-    return app.send_static_file('index.html')
+    return send_from_directory('static', 'index.html')
 
 @app.route('/api/rate/<currency>')
-def rate(currency):
-    now = time.time()
-    if now - rate_cache["ts"] > TTL or currency not in rate_cache["rates"]:
+def get_rate(currency):
+    try:
+        if currency in rate_cache:
+            return jsonify({'status': 'success', 'rate': rate_cache[currency], 'source': 'cache'})
+        
         try:
-            r = requests.get(f"https://open.er-api.com/v6/latest/{currency}")
-            if r.status_code == 200:
-                data = r.json()
-                rate_cache["rates"][currency] = data["rates"]
-                rate_cache["ts"] = now
+            response = requests.get(EXCHANGE_API_URL, timeout=5)
+            data = response.json()
+            if 'rates' in data and currency in data['rates']:
+                rate = 1 / data['rates'][currency]
+                rate_cache[currency] = rate
+                return jsonify({'status': 'success', 'rate': rate, 'source': 'primary'})
         except:
             pass
-    cny_rate = rate_cache.get("rates", {}).get(currency, {}).get("CNY", 1)
-    return jsonify({"status": "success", "rate": cny_rate})
+        
+        try:
+            response = requests.get(BACKUP_API_URL, timeout=5)
+            data = response.json()
+            if 'rates' in data and currency in data['rates']:
+                rate = 1 / data['rates'][currency]
+                rate_cache[currency] = rate
+                return jsonify({'status': 'success', 'rate': rate, 'source': 'backup'})
+        except:
+            pass
+        
+        default_rates = {'USD': 7.15, 'EUR': 7.85, 'GBP': 9.12, 'JPY': 0.048, 'HKD': 0.92, 'TWD': 0.23}
+        if currency in default_rates:
+            return jsonify({'status': 'success', 'rate': default_rates[currency], 'source': 'default'})
+        
+        return jsonify({'status': 'error', 'message': '无法获取汇率'}), 500
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
